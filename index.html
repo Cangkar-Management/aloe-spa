@@ -217,18 +217,57 @@ tbody tr:hover td{background:rgba(122,158,126,.05)}
 <!-- ══ INPUT ══ -->
 <div class="page" id="page-input">
   <div class="stitle">Input Harian</div>
-  <div class="ssub">Tambah beberapa treatment sekaligus · semua tersimpan dalam 1 klik</div>
+  <div class="ssub">Pilih jenis input: OTB (booking confirmed) atau Actual (hasil audit harian)</div>
+
+  <!-- MODE SWITCHER -->
+  <div style="display:flex;gap:0;margin-bottom:24px;border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);width:fit-content">
+    <button id="mode-otb" onclick="setMode('otb')"
+      style="padding:14px 32px;font-family:inherit;font-size:14px;font-weight:600;border:none;cursor:pointer;transition:.2s;background:var(--sage-dark);color:white">
+      📋 Input OTB
+    </button>
+    <button id="mode-actual" onclick="setMode('actual')"
+      style="padding:14px 32px;font-family:inherit;font-size:14px;font-weight:600;border:none;cursor:pointer;transition:.2s;background:var(--white);color:var(--text-soft)">
+      ✅ Input Actual
+    </button>
+  </div>
+
+  <!-- MODE DESCRIPTION -->
+  <div id="mode-desc-otb" style="background:rgba(78,114,83,.08);border-left:4px solid var(--sage-dark);border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:12px 18px;margin-bottom:20px;font-size:13px;color:var(--text-soft);line-height:1.7">
+    <b style="color:var(--sage-dark)">OTB (On The Books)</b> — Input booking yang sudah confirmed untuk periode tertentu. Masuk ke kolom <b>OTB</b> di Forecast 2026. Biasanya diinput awal bulan.
+  </div>
+  <div id="mode-desc-actual" style="display:none;background:rgba(201,168,76,.08);border-left:4px solid var(--gold);border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:12px 18px;margin-bottom:20px;font-size:13px;color:var(--text-soft);line-height:1.7">
+    <b style="color:var(--brown)">Actual Harian</b> — Input revenue aktual dari hasil running audit. Masuk ke kolom <b>MTD Actual</b> di Forecast 2026. Diinput setiap hari.
+  </div>
+
   <div class="card">
-    <div class="ctitle">📝 Form Transaksi
-      <div style="display:flex;gap:8px;align-items:center">
-        <input type="date" id="f-tgl" style="padding:7px 12px;border:1.5px solid var(--cream-dark);border-radius:8px;font-family:inherit;font-size:13px;background:var(--cream);color:var(--text);outline:none">
-        <span style="font-size:12px;color:var(--text-soft)">Tanggal transaksi</span>
+    <div class="ctitle" id="form-title">📋 Form OTB
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <!-- OTB: pilih bulan & tahun -->
+        <div id="otb-period" style="display:flex;gap:8px;align-items:center">
+          <select id="f-bulan" style="padding:7px 12px;border:1.5px solid var(--cream-dark);border-radius:8px;font-family:inherit;font-size:13px;background:var(--cream);color:var(--text);outline:none">
+            <option value="January">Januari</option><option value="February">Februari</option>
+            <option value="March">Maret</option><option value="April">April</option>
+            <option value="May">Mei</option><option value="June" selected>Juni</option>
+            <option value="July">Juli</option><option value="August">Agustus</option>
+            <option value="September">September</option><option value="October">Oktober</option>
+            <option value="November">November</option><option value="December">Desember</option>
+          </select>
+          <select id="f-tahun" style="padding:7px 12px;border:1.5px solid var(--cream-dark);border-radius:8px;font-family:inherit;font-size:13px;background:var(--cream);color:var(--text);outline:none">
+            <option value="2025">2025</option><option value="2026" selected>2026</option><option value="2027">2027</option>
+          </select>
+          <span style="font-size:12px;color:var(--text-soft)">Periode OTB</span>
+        </div>
+        <!-- Actual: pilih tanggal -->
+        <div id="actual-period" style="display:none;gap:8px;align-items:center">
+          <input type="date" id="f-tgl" style="padding:7px 12px;border:1.5px solid var(--cream-dark);border-radius:8px;font-family:inherit;font-size:13px;background:var(--cream);color:var(--text);outline:none">
+          <span style="font-size:12px;color:var(--text-soft)">Tanggal actual</span>
+        </div>
       </div>
     </div>
 
     <!-- Row table -->
     <div style="overflow-x:auto;margin-bottom:14px">
-      <table style="width:100%;border-collapse:collapse;font-size:13px" id="rowTable">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead>
           <tr style="background:var(--cream-dark)">
             <th style="padding:9px 10px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--text-soft);white-space:nowrap">Tipe</th>
@@ -245,20 +284,32 @@ tbody tr:hover td{background:rgba(122,158,126,.05)}
 
     <button class="btn" style="background:none;border:1.5px dashed var(--sage);color:var(--sage-dark);padding:9px 20px;font-size:13px;margin-bottom:18px" onclick="addRow()">＋ Tambah Baris</button>
 
-    <!-- Grand total preview -->
     <div class="rprev" id="grandPrev">
-      <div><div class="rprev-lbl">Total Revenue Hari Ini</div><div style="font-size:11px;opacity:.7;margin-top:2px" id="rowCount">0 item</div></div>
+      <div>
+        <div class="rprev-lbl" id="prev-label">Total OTB</div>
+        <div style="font-size:11px;opacity:.7;margin-top:2px" id="rowCount">0 item</div>
+      </div>
       <div class="rprev-val" id="grandTotal">Rp 0</div>
     </div>
 
-    <button class="btn" id="btnSave" onclick="submitAll()">💾 Simpan Semua ke Google Sheets</button>
+    <button class="btn" id="btnSave" onclick="submitAll()">💾 Simpan OTB ke Google Sheets</button>
   </div>
+
+  <!-- Recent OTB -->
   <div class="card">
-    <div class="ctitle">📋 Data Terbaru <button class="btn btn-sm" onclick="loadDB()">🔄 Refresh</button></div>
-    <div class="tw"><table>
-      <thead><tr><th>Tgl</th><th>Bulan</th><th>Tipe</th><th>Treatment/Agent</th><th>Pax</th><th>Harga/Pax</th><th>Revenue</th><th>Disimpan</th><th></th></tr></thead>
-      <tbody id="dbBody"><tr><td colspan="9"><div class="empty"><div class="ico">🔗</div><p>Hubungkan ke Google Sheets</p></div></td></tr></tbody>
-    </table></div>
+    <div style="display:flex;gap:10px;margin-bottom:16px;border-bottom:1px solid var(--cream-dark);padding-bottom:14px">
+      <button onclick="showRecent('otb')" id="rtab-otb" class="btn btn-sm" style="background:var(--sage-dark);color:white">📋 Data OTB Terbaru</button>
+      <button onclick="showRecent('actual')" id="rtab-actual" class="btn btn-sm" style="background:none;border:1.5px solid var(--cream-dark);color:var(--text-soft)">✅ Data Actual Terbaru</button>
+      <button class="btn btn-sm" style="margin-left:auto" onclick="loadRecent()">🔄 Refresh</button>
+    </div>
+    <div class="tw" id="recent-otb-wrap">
+      <table><thead><tr><th>Bulan</th><th>Tahun</th><th>Tipe</th><th>Treatment/Agent</th><th>Pax</th><th>Harga/Pax</th><th>Revenue</th><th>Disimpan</th><th></th></tr></thead>
+      <tbody id="dbOtbBody"><tr><td colspan="9"><div class="empty"><div class="ico">🔗</div><p>Hubungkan ke Google Sheets</p></div></td></tr></tbody></table>
+    </div>
+    <div class="tw" id="recent-actual-wrap" style="display:none">
+      <table><thead><tr><th>Tgl</th><th>Bulan</th><th>Tipe</th><th>Treatment/Agent</th><th>Pax</th><th>Harga/Pax</th><th>Revenue</th><th>Disimpan</th><th></th></tr></thead>
+      <tbody id="dbActualBody"><tr><td colspan="9"><div class="empty"><div class="ico">🔗</div><p>Hubungkan ke Google Sheets</p></div></td></tr></tbody></table>
+    </div>
   </div>
 </div>
 
@@ -482,8 +533,10 @@ window.addEventListener('DOMContentLoaded',()=>{
   if(URL){ document.getElementById('apiUrl').value=URL; setStatus(true); }
   const t=new Date().toISOString().split('T')[0];
   document.getElementById('f-tgl').value=t;
-  // init multi-row: add first empty row
-  addRow();
+  // init multi-row
+  setMode('otb');
+  // set default date for actual
+  document.getElementById('f-tgl').value = new Date().toISOString().split('T')[0];
 });
 
 // ── UTILS ─────────────────────────────────────────
@@ -529,7 +582,9 @@ async function api(params, body=null){
     if(body){
       res=await fetch(URL,{method:'POST',body:JSON.stringify(body),headers:{'Content-Type':'text/plain;charset=utf-8'}});
     } else {
-      res=await fetch(URL+'?'+new URLSearchParams(params),{redirect:'follow'});
+      // Support payload as string param for getSheet
+      const p = params || {};
+      res=await fetch(URL+'?'+new URLSearchParams(p),{redirect:'follow'});
     }
     if(!res.ok) throw new Error('HTTP '+res.status);
     return await res.json();
@@ -554,7 +609,7 @@ async function saveUrl(){
       toast('✅ '+j.message);
       go('input');
       loadDB();
-      setTimeout(()=>{loadFC();loadHist();loadBud();loadDash();},500);
+      loadRecent(); setTimeout(()=>{loadFC();loadHist();loadBud();loadDash();},800);
     } else {
       setStatus(false);
       toast('Gagal: '+(j.error||'Unknown'),'err');
@@ -667,20 +722,67 @@ function updateGrand() {
 function updAgent(){}
 function prev(){}
 
-async function submitAll() {
-  const tgl = document.getElementById('f-tgl').value;
-  if(!tgl){ toast('⚠️ Pilih tanggal dulu','err'); return; }
-  const d = new Date(tgl);
-  const MO = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const bulan = MO[d.getMonth()];
-  const tanggal = d.getDate();
-  const tahun = d.getFullYear();
+// ── MODE SWITCHER ─────────────────────────────────
+let currentMode = 'otb';
 
-  // Collect all rows
+function setMode(mode) {
+  currentMode = mode;
+  const isOtb = mode === 'otb';
+
+  // Toggle mode buttons
+  document.getElementById('mode-otb').style.cssText    = 'padding:14px 32px;font-family:inherit;font-size:14px;font-weight:600;border:none;cursor:pointer;transition:.2s;background:'+(isOtb?'var(--sage-dark)':'var(--white)')+';color:'+(isOtb?'white':'var(--text-soft)');
+  document.getElementById('mode-actual').style.cssText = 'padding:14px 32px;font-family:inherit;font-size:14px;font-weight:600;border:none;cursor:pointer;transition:.2s;background:'+(!isOtb?'var(--gold)':'var(--white)')+';color:'+(!isOtb?'var(--brown)':'var(--text-soft)');
+
+  // Toggle descriptions
+  document.getElementById('mode-desc-otb').style.display    = isOtb ? 'block' : 'none';
+  document.getElementById('mode-desc-actual').style.display = isOtb ? 'none'  : 'block';
+
+  // Toggle period inputs
+  document.getElementById('otb-period').style.display    = isOtb ? 'flex' : 'none';
+  document.getElementById('actual-period').style.display = isOtb ? 'none' : 'flex';
+
+  // Update labels
+  document.getElementById('form-title').childNodes[0].textContent = isOtb ? '📋 Form OTB ' : '✅ Form Actual ';
+  document.getElementById('prev-label').textContent = isOtb ? 'Total OTB' : 'Total Actual Hari Ini';
+  document.getElementById('btnSave').textContent    = isOtb ? '💾 Simpan OTB ke Google Sheets' : '💾 Simpan Actual ke Google Sheets';
+
+  // Reset rows
+  document.getElementById('rowBody').innerHTML = '';
+  rowId = 0;
+  updateGrand();
+  addRow();
+}
+
+function showRecent(type) {
+  const isOtb = type === 'otb';
+  document.getElementById('recent-otb-wrap').style.display    = isOtb ? 'block' : 'none';
+  document.getElementById('recent-actual-wrap').style.display = isOtb ? 'none'  : 'block';
+  document.getElementById('rtab-otb').style.cssText    = 'padding:8px 16px;font-size:12px;font-weight:600;border:none;cursor:pointer;font-family:inherit;transition:.2s;border-radius:var(--radius-sm);background:'+(isOtb?'var(--sage-dark)':'none')+';color:'+(isOtb?'white':'var(--text-soft)')+';border:1.5px solid '+(isOtb?'transparent':'var(--cream-dark)');
+  document.getElementById('rtab-actual').style.cssText = 'padding:8px 16px;font-size:12px;font-weight:600;border:none;cursor:pointer;font-family:inherit;transition:.2s;border-radius:var(--radius-sm);background:'+(!isOtb?'var(--gold)':'none')+';color:'+(!isOtb?'var(--brown)':'var(--text-soft)')+';border:1.5px solid '+(!isOtb?'transparent':'var(--cream-dark)');
+}
+
+async function submitAll() {
+  const MO = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const isOtb = currentMode === 'otb';
+  let tahun, bulan, tanggal;
+
+  if(isOtb) {
+    bulan   = document.getElementById('f-bulan').value;
+    tahun   = parseInt(document.getElementById('f-tahun').value);
+    tanggal = 1; // OTB: tanggal 1 sebagai penanda periode
+  } else {
+    const tgl = document.getElementById('f-tgl').value;
+    if(!tgl){ toast('⚠️ Pilih tanggal dulu','err'); return; }
+    const d = new Date(tgl);
+    tahun   = d.getFullYear();
+    bulan   = MO[d.getMonth()];
+    tanggal = d.getDate();
+  }
+
   const entries = [];
   let hasError = false;
   document.querySelectorAll('#rowBody tr').forEach(tr => {
-    const id = tr.id.replace('row-','');
+    const id    = tr.id.replace('row-','');
     const tipe  = document.getElementById('rt-'+id)?.value;
     const agent = document.getElementById('ra-'+id)?.value;
     const pax   = parseInt(document.getElementById('rp-'+id)?.value)||0;
@@ -693,28 +795,79 @@ async function submitAll() {
   if(hasError){ toast('⚠️ Ada baris yang belum lengkap','err'); return; }
 
   const btn = document.getElementById('btnSave');
-  btn.disabled = true; btn.textContent = '⏳ Menyimpan ' + entries.length + ' item…';
+  const sheet = isOtb ? 'Database_OTB' : 'Database_Actual';
+  btn.disabled = true;
+  btn.textContent = '⏳ Menyimpan ' + entries.length + ' item…';
 
-  // Send all entries one by one (Apps Script free tier: sequential safer)
   let success = 0;
   for(const payload of entries) {
-    const res = await api(null, {action:'addEntry', payload});
+    const res = await api(null, {action:'addEntry', payload:{...payload, sheet}});
     if(res?.status === 'ok') success++;
-    else { toast('Gagal simpan 1 item: '+(res?.error||'error'),'err'); break; }
+    else { toast('Gagal: '+(res?.error||'error'),'err'); break; }
   }
 
-  btn.disabled = false; btn.textContent = '💾 Simpan Semua ke Google Sheets';
+  btn.disabled = false;
+  btn.textContent = isOtb ? '💾 Simpan OTB ke Google Sheets' : '💾 Simpan Actual ke Google Sheets';
 
   if(success === entries.length) {
-    toast(`✅ ${success} transaksi berhasil disimpan!`);
+    toast(`✅ ${success} ${isOtb?'OTB':'Actual'} berhasil disimpan!`);
     document.getElementById('rowBody').innerHTML = '';
-    rowId = 0;
-    updateGrand();
-    loadDB();
+    rowId = 0; updateGrand(); addRow();
+    loadRecent();
   }
 }
+
+async function loadRecent() {
+  const [resOtb, resAct] = await Promise.all([
+    api({action:'getSheet', payload:'Database_OTB'}),
+    api({action:'getSheet', payload:'Database_Actual'})
+  ]);
+
+  // OTB table
+  const otbRows = resOtb?.data ? [...resOtb.data].reverse().slice(0,20) : [];
+  document.getElementById('dbOtbBody').innerHTML = otbRows.length
+    ? otbRows.map(r=>`<tr>
+        <td>${r.Bulan||'—'}</td><td>${r.Tahun||'—'}</td>
+        <td><span style="background:${r.Tipe==='Alacarte'?'rgba(122,158,126,.15)':'rgba(201,168,76,.15)'};color:${r.Tipe==='Alacarte'?'var(--sage-dark)':'var(--brown)'};padding:2px 9px;border-radius:20px;font-size:12px;font-weight:600">${r.Tipe||'—'}</span></td>
+        <td>${r['Agent/Treatment']||'—'}</td>
+        <td style="text-align:right">${r.Pax||'—'}</td>
+        <td style="text-align:right">${rp(r['Harga/Pax'])}</td>
+        <td style="text-align:right;font-weight:600;color:var(--sage-dark)">${rp(r.Revenue)}</td>
+        <td style="font-size:11px;color:var(--text-soft)">${r.Disimpan||'—'}</td>
+        <td><button class="btn-del" onclick="delEntry('Database_OTB',${r._row})">✕</button></td>
+      </tr>`).join('')
+    : '<tr><td colspan="9"><div class="empty"><div class="ico">📭</div><p>Belum ada OTB</p></div></td></tr>';
+
+  // Actual table
+  const actRows = resAct?.data ? [...resAct.data].reverse().slice(0,20) : [];
+  document.getElementById('dbActualBody').innerHTML = actRows.length
+    ? actRows.map(r=>`<tr>
+        <td>${r.Tanggal||'—'}</td><td>${r.Bulan||'—'}</td>
+        <td><span style="background:${r.Tipe==='Alacarte'?'rgba(122,158,126,.15)':'rgba(201,168,76,.15)'};color:${r.Tipe==='Alacarte'?'var(--sage-dark)':'var(--brown)'};padding:2px 9px;border-radius:20px;font-size:12px;font-weight:600">${r.Tipe||'—'}</span></td>
+        <td>${r['Agent/Treatment']||'—'}</td>
+        <td style="text-align:right">${r.Pax||'—'}</td>
+        <td style="text-align:right">${rp(r['Harga/Pax'])}</td>
+        <td style="text-align:right;font-weight:600;color:var(--gold)">${rp(r.Revenue)}</td>
+        <td style="font-size:11px;color:var(--text-soft)">${r.Disimpan||'—'}</td>
+        <td><button class="btn-del" onclick="delEntry('Database_Actual',${r._row})">✕</button></td>
+      </tr>`).join('')
+    : '<tr><td colspan="9"><div class="empty"><div class="ico">📭</div><p>Belum ada Actual</p></div></td></tr>';
+}
+
+async function delEntry(sheet, row) {
+  if(!confirm('Hapus data ini?')) return;
+  const res = await api(null, {action:'deleteEntry', payload:{sheet, row}});
+  if(res?.status === 'ok') { toast('🗑️ Data dihapus'); loadRecent(); }
+  else toast('Gagal hapus','err');
+}
+
 async function loadDB(){
-  const res=await api({action:'getDatabase'});
+  await loadRecent();
+}
+
+// Legacy stub
+async function _loadDB_unused(){
+  const res=await api({action:'getSheet', payload:'Database_Actual'});
   if(!res?.data) return;
   const rows=[...res.data].reverse().slice(0,25);
   const tb=document.getElementById('dbBody');
@@ -730,10 +883,10 @@ async function loadDB(){
     <td><button class="btn-del" onclick="del(${r._row})">✕</button></td>
   </tr>`).join('');
 }
-async function del(row){
+async function del_legacy(row){
   if(!confirm('Hapus data ini?')) return;
   const res=await api(null,{action:'deleteEntry',payload:{row}});
-  if(res?.status==='ok'){ toast('🗑️ Data dihapus'); loadDB(); }
+  if(res?.status==='ok'){ toast('🗑️ Data dihapus'); loadRecent(); }
 }
 
 // ── FORECAST ─────────────────────────────────────
@@ -970,7 +1123,7 @@ function renderDash() {
 }
 
 // ── AUTO LOAD ─────────────────────────────────────
-if(URL){ loadDB(); }
+if(URL){ loadRecent(); }
 </script>
 </body>
 </html>
