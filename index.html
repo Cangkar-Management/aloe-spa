@@ -140,11 +140,11 @@ tbody tr:hover td{background:rgba(122,158,126,.05)}
       <div class="logo-icon">🌿</div>
       <div><div class="logo-text">Aloe Spa</div><div class="logo-sub">Revenue Manager</div></div>
     </div>
-    <div class="api-row">
+    <div class="api-row" style="display:none">
       <input class="api-input" id="apiUrl" type="text" placeholder="Paste URL Apps Script: https://script.google.com/macros/s/…/exec">
       <button class="btn-api" onclick="saveUrl()">Hubungkan</button>
     </div>
-    <div class="status-pill"><div class="dot" id="dot"></div><span id="statusTxt">Belum terhubung</span></div>
+    <div class="status-pill"><div class="dot on" id="dot"></div><span id="statusTxt">Terhubung ✓</span></div>
   </div>
 </header>
 
@@ -528,7 +528,7 @@ const AGENTS = {
     '(Lainnya)',
   ]
 };
-let URL = localStorage.getItem('aloe_url')||'';
+let URL = localStorage.getItem('aloe_url') || 'https://script.google.com/macros/s/AKfycbxJAEt-pZ_KWcq0BtphjrTclXLlhLJGy8EgRE-cQ2dLyVJ6mGxyTg4cwKnm1lkDM_0l/exec';
 
 // ── INIT ──────────────────────────────────────────
 window.addEventListener('DOMContentLoaded',()=>{
@@ -1244,7 +1244,9 @@ function renderDash() {
 }
 
 // ── AUTO LOAD ─────────────────────────────────────
-if(URL){ loadRecent(); }
+// URL always set — auto load all
+loadRecent();
+setTimeout(()=>{ loadFC(); loadHist(); loadBud(); loadDash(); }, 600);
 </script>
 </body>
 </html>
