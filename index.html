@@ -927,17 +927,15 @@ async function loadFC(){
     }
     return r;
   });
-  const rows=resFc.data.filter(r=>r.Bulan&&!String(r.Bulan).includes('TOTAL'));
+  const fcrows=resFc.data.filter(r=>r.Bulan&&!String(r.Bulan).includes('TOTAL'));
   const totalRow=resFc.data.find(r=>String(r.Bulan||'').includes('TOTAL'))||{};
-  totalRow['MTD Actual']=rows.reduce((s,r)=>s+(Number(r['MTD Actual'])||0),0);
-  totalRow['OTB']=rows.reduce((s,r)=>s+(Number(r.OTB)||0),0);
-  totalRow['Forecast']=rows.reduce((s,r)=>s+(Number(r.Forecast)||0),0);
-  totalRow['Gap vs Budget']=rows.reduce((s,r)=>s+(Number(r['Gap vs Budget'])||0),0);
-  totalRow['Budget']=rows.reduce((s,r)=>s+(Number(r.Budget)||0),0);
+  totalRow['MTD Actual']=fcrows.reduce((s,r)=>s+(Number(r['MTD Actual'])||0),0);
+  totalRow['OTB']=fcrows.reduce((s,r)=>s+(Number(r.OTB)||0),0);
+  totalRow['Forecast']=fcrows.reduce((s,r)=>s+(Number(r.Forecast)||0),0);
+  totalRow['Gap vs Budget']=fcrows.reduce((s,r)=>s+(Number(r['Gap vs Budget'])||0),0);
+  totalRow['Budget']=fcrows.reduce((s,r)=>s+(Number(r.Budget)||0),0);
   totalRow['Ach %']=totalRow.Budget?Math.round(totalRow.Forecast/totalRow.Budget*100*10)/10:0;
-  const res=resFc;
-  const total=res.data.find(r=>String(r.Bulan||'').includes('TOTAL'))||{};
-  const fcrows=res.data.filter(r=>r.Bulan&&!String(r.Bulan).includes('TOTAL'));
+  const total=totalRow;
   document.getElementById('fc-b').textContent=rpS(total.Budget);
   document.getElementById('fc-a').textContent=rpS(total['MTD Actual']);
   document.getElementById('fc-f').textContent=rpS(total.Forecast);
@@ -992,17 +990,16 @@ async function loadHist(){
       }
     }
   });
-  const histrows=revData.filter(r=>r.Bulan&&r.Bulan!=='TOTAL');
+  const hrows=revData.filter(r=>r.Bulan&&r.Bulan!=='TOTAL');
   const totRow=revData.find(r=>r.Bulan==='TOTAL');
   if(totRow){
-    totRow['Treatment 2026']=histrows.reduce((s,r)=>s+(Number(r['Treatment 2026'])||0),0);
-    totRow['Package 2026']=histrows.reduce((s,r)=>s+(Number(r['Package 2026'])||0),0);
-    totRow['Total 2026']=histrows.reduce((s,r)=>s+(Number(r['Total 2026'])||0),0);
+    totRow['Treatment 2026']=hrows.reduce((s,r)=>s+(Number(r['Treatment 2026'])||0),0);
+    totRow['Package 2026']=hrows.reduce((s,r)=>s+(Number(r['Package 2026'])||0),0);
+    totRow['Total 2026']=hrows.reduce((s,r)=>s+(Number(r['Total 2026'])||0),0);
     const tot25=Number(totRow['Total 2025'])||0;
     totRow['YoY (%)']=tot25>0?Math.round((totRow['Total 2026']-tot25)/tot25*100*10)/10:-100;
   }
-  const tot=revData.find(r=>r.Bulan==='TOTAL')||{};
-  const hrows=revData.filter(r=>r.Bulan&&r.Bulan!=='TOTAL');
+  const tot=totRow||{};
   document.getElementById('h-25').textContent=rpS(tot['Total 2025']);
   document.getElementById('h-26').textContent=rpS(tot['Total 2026']);
   const yoy=Number(tot['YoY (%)']);
