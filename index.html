@@ -893,96 +893,58 @@ async function loadDB(){
   await loadRecent();
 }
 
-// Legacy stub
-async function _loadDB_unused(){
-  const res=await api({action:'getSheet', payload:'Database_Actual'});
-  if(!res?.data) return;
-  const rows=[...res.data].reverse().slice(0,25);
-  const tb=document.getElementById('dbBody');
-  if(!rows.length){ tb.innerHTML='<tr><td colspan="9"><div class="empty"><div class="ico">📭</div><p>Belum ada data</p></div></td></tr>'; return; }
-  tb.innerHTML=rows.map(r=>`<tr>
-    <td>${r.Tanggal||'—'}</td><td>${r.Bulan||'—'}</td>
-    <td><span style="background:${r.Tipe==='Alacarte'?'rgba(122,158,126,.15)':'rgba(201,168,76,.15)'};color:${r.Tipe==='Alacarte'?'var(--sage-dark)':'var(--brown)'};padding:2px 9px;border-radius:20px;font-size:12px;font-weight:600">${r.Tipe||'—'}</span></td>
-    <td>${r['Agent/Treatment']||'—'}</td>
-    <td style="text-align:right">${r.Pax||'—'}</td>
-    <td style="text-align:right">${rp(r['Harga/Pax'])}</td>
-    <td style="text-align:right;font-weight:600;color:var(--sage-dark)">${rp(r.Revenue)}</td>
-    <td style="font-size:11px;color:var(--text-soft)">${r.Disimpan||'—'}</td>
-    <td><button class="btn-del" onclick="del(${r._row})">✕</button></td>
-  </tr>`).join('');
-}
-async function del_legacy(row){
-  if(!confirm('Hapus data ini?')) return;
-  const res=await api(null,{action:'deleteEntry',payload:{row}});
-  if(res?.status==='ok'){ toast('🗑️ Data dihapus'); loadRecent(); }
-}
 
 // ── FORECAST ─────────────────────────────────────
 async function loadFC(){
-  // Load OTB and Actual from their respective sheets, then compute forecast client-side
   const [resOtb, resAct, resFc] = await Promise.all([
     api({action:'getSheet', payload:'Database_OTB'}),
     api({action:'getSheet', payload:'Database_Actual'}),
     api({action:'getForecast'})
   ]);
   if(!resFc?.data) return;
-
-  // Build lookup: month → OTB total, Actual total
-  const otbByMonth  = {};
-  const actByMonth  = {};
-  const actDaysByMonth = {};
-
-  (resOtb?.data||[]).forEach(r => {
-    const k = r.Bulan;
-    otbByMonth[k] = (otbByMonth[k]||0) + (Number(r.Revenue)||0);
+  const otbByMonth={}, actByMonth={}, actDaysByMonth={};
+  (resOtb?.data||[]).forEach(r=>{
+    otbByMonth[r.Bulan]=(otbByMonth[r.Bulan]||0)+(Number(r.Revenue)||0);
   });
-  (resAct?.data||[]).forEach(r => {
-    const k = r.Bulan;
-    actByMonth[k]     = (actByMonth[k]||0) + (Number(r.Revenue)||0);
-    // count unique days
-    if(!actDaysByMonth[k]) actDaysByMonth[k] = new Set();
-    actDaysByMonth[k].add(r.Tanggal);
+  (resAct?.data||[]).forEach(r=>{
+    actByMonth[r.Bulan]=(actByMonth[r.Bulan]||0)+(Number(r.Revenue)||0);
+    if(!actDaysByMonth[r.Bulan]) actDaysByMonth[r.Bulan]=new Set();
+    actDaysByMonth[r.Bulan].add(r.Tanggal);
   });
-
-  // Patch each row's OTB and MTD Actual with live DB data
-  resFc.data = resFc.data.map(r => {
-    const mn = r.Bulan;
-    if(mn && mn !== 'TOTAL') {
-      if(otbByMonth[mn] !== undefined) r.OTB = otbByMonth[mn];
-      if(actByMonth[mn] !== undefined) {
-        r['MTD Actual'] = actByMonth[mn];
-        r['Hari Berjalan'] = actDaysByMonth[mn]?.size || 0;
-        const days = r['Hari Berjalan'] || 1;
-        r['Daily Pace'] = Math.round(actByMonth[mn] / days);
-        r['Forecast']   = actByMonth[mn] + r['Daily Pace'] * ((r.Days||30) - days);
-        r['Gap vs Budget'] = r['Forecast'] - (r.Budget||0);
-        r['Ach %'] = r.Budget ? Math.round(r['Forecast']/r.Budget*100*10)/10 : 0;
+  resFc.data=resFc.data.map(r=>{
+    const mn=r.Bulan;
+    if(mn&&mn!=='TOTAL'){
+      if(otbByMonth[mn]!==undefined) r.OTB=otbByMonth[mn];
+      if(actByMonth[mn]!==undefined){
+        r['MTD Actual']=actByMonth[mn];
+        r['Hari Berjalan']=actDaysByMonth[mn]?.size||0;
+        const days=r['Hari Berjalan']||1;
+        r['Daily Pace']=Math.round(actByMonth[mn]/days);
+        r['Forecast']=actByMonth[mn]+r['Daily Pace']*((r.Days||30)-days);
+        r['Gap vs Budget']=r['Forecast']-(r.Budget||0);
+        r['Ach %']=r.Budget?Math.round(r['Forecast']/r.Budget*100*10)/10:0;
       }
     }
     return r;
   });
-
-  // Recompute TOTAL row
-  const rows = resFc.data.filter(r=>r.Bulan && r.Bulan!=='TOTAL' && !String(r.Bulan).includes('TOTAL'));
-  const totalRow = resFc.data.find(r=>String(r.Bulan).includes('TOTAL')) || {};
-  totalRow['MTD Actual'] = rows.reduce((s,r)=>s+(Number(r['MTD Actual'])||0),0);
-  totalRow['OTB']        = rows.reduce((s,r)=>s+(Number(r.OTB)||0),0);
-  totalRow['Forecast']   = rows.reduce((s,r)=>s+(Number(r.Forecast)||0),0);
-  totalRow['Gap vs Budget'] = rows.reduce((s,r)=>s+(Number(r['Gap vs Budget'])||0),0);
-  totalRow['Budget']     = rows.reduce((s,r)=>s+(Number(r.Budget)||0),0);
-  totalRow['Ach %']      = totalRow.Budget ? Math.round(totalRow.Forecast/totalRow.Budget*100*10)/10 : 0;
-
-  const res = resFc;
-  if(!res?.data) return;
-  const total=res.data.find(r=>String(r.Bulan).includes('TOTAL'))||{};
-  const rows=res.data.filter(r=>r.Bulan&&!String(r.Bulan).includes('TOTAL'));
+  const rows=resFc.data.filter(r=>r.Bulan&&!String(r.Bulan).includes('TOTAL'));
+  const totalRow=resFc.data.find(r=>String(r.Bulan||'').includes('TOTAL'))||{};
+  totalRow['MTD Actual']=rows.reduce((s,r)=>s+(Number(r['MTD Actual'])||0),0);
+  totalRow['OTB']=rows.reduce((s,r)=>s+(Number(r.OTB)||0),0);
+  totalRow['Forecast']=rows.reduce((s,r)=>s+(Number(r.Forecast)||0),0);
+  totalRow['Gap vs Budget']=rows.reduce((s,r)=>s+(Number(r['Gap vs Budget'])||0),0);
+  totalRow['Budget']=rows.reduce((s,r)=>s+(Number(r.Budget)||0),0);
+  totalRow['Ach %']=totalRow.Budget?Math.round(totalRow.Forecast/totalRow.Budget*100*10)/10:0;
+  const res=resFc;
+  const total=res.data.find(r=>String(r.Bulan||'').includes('TOTAL'))||{};
+  const fcrows=res.data.filter(r=>r.Bulan&&!String(r.Bulan).includes('TOTAL'));
   document.getElementById('fc-b').textContent=rpS(total.Budget);
   document.getElementById('fc-a').textContent=rpS(total['MTD Actual']);
   document.getElementById('fc-f').textContent=rpS(total.Forecast);
   const g=Number(total['Gap vs Budget']);
   const ge=document.getElementById('fc-g');
   ge.textContent=(g>=0?'+':'')+rpS(g); ge.style.color=g>=0?'var(--green)':'var(--red)';
-  document.getElementById('fcBody').innerHTML=rows.map(r=>{
+  document.getElementById('fcBody').innerHTML=fcrows.map(r=>{
     const a=Number(r['Ach %']); const ac=a>=90?'good':a>=60?'warn':'bad';
     const pp=Math.min(a,100); const g2=Number(r['Gap vs Budget']);
     return`<tr>
@@ -1009,66 +971,56 @@ async function loadHist(){
   ]);
   if(!res) return;
   const {revData,tamuData}=res;
-
-  // Aggregate actual 2026 from Database_Actual: Alacarte→Treatment, Bundling→Package
-  const act2026 = {};
-  (resAct?.data||[]).forEach(r => {
-    const mn = r.Bulan;
-    if(!act2026[mn]) act2026[mn] = {treat:0, pkg:0};
-    if(r.Tipe === 'Alacarte') act2026[mn].treat += Number(r.Revenue)||0;
-    if(r.Tipe === 'Bundling')  act2026[mn].pkg   += Number(r.Revenue)||0;
+  const act2026={};
+  (resAct?.data||[]).forEach(r=>{
+    const mn=r.Bulan;
+    if(!act2026[mn]) act2026[mn]={treat:0,pkg:0};
+    if(r.Tipe==='Alacarte') act2026[mn].treat+=Number(r.Revenue)||0;
+    if(r.Tipe==='Bundling')  act2026[mn].pkg  +=Number(r.Revenue)||0;
   });
-
-  // Patch revData with live 2026 data
-  const MO_ID_MAP = {January:'Januari',February:'Februari',March:'Maret',April:'April',May:'Mei',June:'Juni',July:'Juli',August:'Agustus',September:'September',October:'Oktober',November:'November',December:'Desember'};
-  revData.forEach(r => {
-    // Match Indonesian month name to English key
-    const enKey = Object.entries(MO_ID_MAP).find(([en,id])=>id===r.Bulan)?.[0];
-    if(enKey && act2026[enKey]) {
-      const live = act2026[enKey];
-      if(live.treat > 0 || live.pkg > 0) {
-        r['Treatment 2026'] = live.treat;
-        r['Package 2026']   = live.pkg;
-        r['Total 2026']     = live.treat + live.pkg;
-        const tot25 = Number(r['Total 2025'])||0;
-        r['YoY (%)'] = tot25 > 0 ? Math.round((r['Total 2026']-tot25)/tot25*100*10)/10 : -100;
+  const MO_ID_MAP={January:'Januari',February:'Februari',March:'Maret',April:'April',May:'Mei',June:'Juni',July:'Juli',August:'Agustus',September:'September',October:'Oktober',November:'November',December:'Desember'};
+  revData.forEach(r=>{
+    const enKey=Object.entries(MO_ID_MAP).find(([en,id])=>id===r.Bulan)?.[0];
+    if(enKey&&act2026[enKey]){
+      const live=act2026[enKey];
+      if(live.treat>0||live.pkg>0){
+        r['Treatment 2026']=live.treat;
+        r['Package 2026']=live.pkg;
+        r['Total 2026']=live.treat+live.pkg;
+        const tot25=Number(r['Total 2025'])||0;
+        r['YoY (%)']=tot25>0?Math.round((r['Total 2026']-tot25)/tot25*100*10)/10:-100;
       }
     }
   });
-
-  // Recompute TOTAL row
-  const rows = revData.filter(r=>r.Bulan && r.Bulan!=='TOTAL');
-  const totRow = revData.find(r=>r.Bulan==='TOTAL');
-  if(totRow) {
-    totRow['Treatment 2026'] = rows.reduce((s,r)=>s+(Number(r['Treatment 2026'])||0),0);
-    totRow['Package 2026']   = rows.reduce((s,r)=>s+(Number(r['Package 2026'])||0),0);
-    totRow['Total 2026']     = rows.reduce((s,r)=>s+(Number(r['Total 2026'])||0),0);
-    const tot25 = Number(totRow['Total 2025'])||0;
-    totRow['YoY (%)'] = tot25 > 0 ? Math.round((totRow['Total 2026']-tot25)/tot25*100*10)/10 : -100;
+  const histrows=revData.filter(r=>r.Bulan&&r.Bulan!=='TOTAL');
+  const totRow=revData.find(r=>r.Bulan==='TOTAL');
+  if(totRow){
+    totRow['Treatment 2026']=histrows.reduce((s,r)=>s+(Number(r['Treatment 2026'])||0),0);
+    totRow['Package 2026']=histrows.reduce((s,r)=>s+(Number(r['Package 2026'])||0),0);
+    totRow['Total 2026']=histrows.reduce((s,r)=>s+(Number(r['Total 2026'])||0),0);
+    const tot25=Number(totRow['Total 2025'])||0;
+    totRow['YoY (%)']=tot25>0?Math.round((totRow['Total 2026']-tot25)/tot25*100*10)/10:-100;
   }
   const tot=revData.find(r=>r.Bulan==='TOTAL')||{};
-  const rows=revData.filter(r=>r.Bulan&&r.Bulan!=='TOTAL');
+  const hrows=revData.filter(r=>r.Bulan&&r.Bulan!=='TOTAL');
   document.getElementById('h-25').textContent=rpS(tot['Total 2025']);
   document.getElementById('h-26').textContent=rpS(tot['Total 2026']);
   const yoy=Number(tot['YoY (%)']);
   const ye=document.getElementById('h-yoy');
   ye.textContent=(yoy>=0?'+':'')+pct(yoy); ye.style.color=yoy>=0?'var(--green)':'var(--red)';
-  // Chart
-  const mx=Math.max(...rows.flatMap(r=>[Number(r['Total 2025'])||0,Number(r['Total 2026'])||0]));
-  document.getElementById('hChart').innerHTML=rows.map(r=>{
-    const v25=Number(r['Total 2025'])||0, v26=Number(r['Total 2026'])||0;
-    const h25=mx?Math.round(v25/mx*180):0, h26=mx?Math.round(v26/mx*180):0;
+  const mx=Math.max(...hrows.flatMap(r=>[Number(r['Total 2025'])||0,Number(r['Total 2026'])||0]));
+  document.getElementById('hChart').innerHTML=hrows.map(r=>{
+    const v25=Number(r['Total 2025'])||0,v26=Number(r['Total 2026'])||0;
+    const h25=mx?Math.round(v25/mx*180):0,h26=mx?Math.round(v26/mx*180):0;
     return`<div class="bg"><div class="bars"><div class="bar b25" style="height:${h25}px" title="${r.Bulan} 2025: ${rp(v25)}"></div><div class="bar b26" style="height:${h26}px" title="${r.Bulan} 2026: ${rp(v26)}"></div></div><div class="bl">${(r.Bulan||'').substring(0,3)}</div></div>`;
   }).join('');
-  // Table
-  document.getElementById('histBody').innerHTML=[...rows,{...tot,Bulan:'TOTAL'}].map(r=>{
+  document.getElementById('histBody').innerHTML=[...hrows,{...tot,Bulan:'TOTAL'}].map(r=>{
     const isTot=r.Bulan==='TOTAL'; const y=Number(r['YoY (%)']);
     return`<tr class="${isTot?'trow':''}"><td style="font-weight:${isTot?700:400}">${r.Bulan}</td>
       <td style="text-align:right">${rp(r['Treatment 2025'])}</td><td style="text-align:right">${rp(r['Package 2025'])}</td><td style="text-align:right;font-weight:600">${rp(r['Total 2025'])}</td>
       <td style="text-align:right">${rp(r['Treatment 2026'])}</td><td style="text-align:right">${rp(r['Package 2026'])}</td><td style="text-align:right;font-weight:600;color:var(--sage-dark)">${rp(r['Total 2026'])}</td>
       <td><span class="yoy ${y>=0?'yp':'yn'}">${y>=0?'+':''}${pct(y)}</span></td></tr>`;
   }).join('');
-  // Tamu
   if(tamuData?.length){
     document.getElementById('tamuBody').innerHTML=tamuData.map(r=>`<tr>
       <td>${mn(r.Bulan)}</td><td style="text-align:right">${r['Tamu Hotel']||'—'}</td><td style="text-align:right">${r['Tamu Spa']||'—'}</td>
@@ -1090,19 +1042,17 @@ async function loadBud(){
     const v=params[k]; const u=PU[k]; const disp=u==='Rp'?rp(v):(v??'—');
     return`<div class="pi"><label>${lbl}</label><div class="pv">${disp}<span style="font-size:13px;font-weight:400;color:var(--text-soft)"> ${u!=='Rp'?u:''}</span></div></div>`;
   }).join('');
-  const rows=projData.filter(r=>r.Bulan&&r.Bulan!=='TOTAL 2027');
+  const budrows=projData.filter(r=>r.Bulan&&r.Bulan!=='TOTAL 2027');
   const tot=projData.find(r=>r.Bulan==='TOTAL 2027')||{};
-  // Chart
   const hist25={};
   if(hRes?.revData) hRes.revData.filter(r=>r.Bulan&&r.Bulan!=='TOTAL').forEach(r=>hist25[r.Bulan]=Number(r['Total 2025'])||0);
-  const mx=Math.max(...rows.flatMap(r=>[Number(r['Total Revenue (Rp)'])||0,hist25[r.Bulan]||0]));
-  document.getElementById('bChart').innerHTML=rows.map(r=>{
-    const v25=hist25[r.Bulan]||0, v27=Number(r['Total Revenue (Rp)'])||0;
-    const h25=mx?Math.round(v25/mx*180):0, h27=mx?Math.round(v27/mx*180):0;
+  const mx=Math.max(...budrows.flatMap(r=>[Number(r['Total Revenue (Rp)'])||0,hist25[r.Bulan]||0]));
+  document.getElementById('bChart').innerHTML=budrows.map(r=>{
+    const v25=hist25[r.Bulan]||0,v27=Number(r['Total Revenue (Rp)'])||0;
+    const h25=mx?Math.round(v25/mx*180):0,h27=mx?Math.round(v27/mx*180):0;
     return`<div class="bg"><div class="bars"><div class="bar b25" style="height:${h25}px"></div><div class="bar b27" style="height:${h27}px"></div></div><div class="bl">${(r.Bulan||'').substring(0,3)}</div></div>`;
   }).join('');
-  // Table
-  document.getElementById('budBody').innerHTML=[...rows,{...tot,Bulan:'TOTAL 2027'}].map(r=>{
+  document.getElementById('budBody').innerHTML=[...budrows,{...tot,Bulan:'TOTAL 2027'}].map(r=>{
     const isTot=r.Bulan==='TOTAL 2027'; const vs=r['vs 2025 (%)'];
     const vsN=Number(vs); const vsD=(vs==='N/A'||vs==null||isNaN(vsN))?'<span style="color:var(--text-soft)">N/A</span>':`<span class="yoy ${vsN>=0?'yp':'yn'}">${vsN>=0?'+':''}${pct(vsN)}</span>`;
     return`<tr class="${isTot?'trow':''}"><td style="font-weight:${isTot?700:400}">${r.Bulan}</td>
@@ -1113,30 +1063,28 @@ async function loadBud(){
   }).join('');
 }
 
-
 // ── DASHBOARD ─────────────────────────────────────
 let dashData = [];
-
 async function loadDash() {
-  const res = await api({action:'getDatabase'});
-  if(!res?.data) return;
-  dashData = res.data.filter(r => r.Tahun);
+  const [resOtb, resAct] = await Promise.all([
+    api({action:'getSheet', payload:'Database_OTB'}),
+    api({action:'getSheet', payload:'Database_Actual'})
+  ]);
+  dashData = [...(resOtb?.data||[]).map(r=>({...r,_src:'OTB'})), ...(resAct?.data||[]).map(r=>({...r,_src:'Actual'}))];
   renderDash();
 }
+
 
 function renderDash() {
   const year  = document.getElementById('df-year').value;
   const month = document.getElementById('df-month').value;
   const tipe  = document.getElementById('df-tipe').value;
-
   let rows = dashData.filter(r => {
     if(year  !== 'all' && String(r.Tahun) !== year)  return false;
     if(month !== 'all' && r.Bulan !== month)          return false;
     if(tipe  !== 'all' && r.Tipe  !== tipe)           return false;
     return true;
   });
-
-  // KPIs
   const totalRev = rows.reduce((s,r)=>s+(Number(r.Revenue)||0),0);
   const totalPax = rows.reduce((s,r)=>s+(Number(r.Pax)||0),0);
   const avgTrx   = rows.length ? Math.round(totalRev/rows.length) : 0;
@@ -1145,18 +1093,16 @@ function renderDash() {
   document.getElementById('dk-avg').textContent = rpS(avgTrx);
   document.getElementById('dk-pax').textContent = totalPax.toLocaleString('id-ID');
   document.getElementById('dash-count').textContent = '— '+rows.length+' transaksi';
-
-  // ── Top treatments by revenue ──
-  const byTreatment = {};
+  const byT = {};
   rows.forEach(r => {
-    const k = r['Agent/Treatment'] || '(unknown)';
-    if(!byTreatment[k]) byTreatment[k] = {rev:0,trx:0,pax:0};
-    byTreatment[k].rev += Number(r.Revenue)||0;
-    byTreatment[k].trx += 1;
-    byTreatment[k].pax += Number(r.Pax)||0;
+    const k = r['Agent/Treatment']||'(unknown)';
+    if(!byT[k]) byT[k]={rev:0,trx:0,pax:0};
+    byT[k].rev += Number(r.Revenue)||0;
+    byT[k].trx += 1;
+    byT[k].pax += Number(r.Pax)||0;
   });
-  const topT = Object.entries(byTreatment).sort((a,b)=>b[1].rev-a[1].rev).slice(0,8);
-  const maxRevT = topT[0]?.[1].rev || 1;
+  const topT = Object.entries(byT).sort((a,b)=>b[1].rev-a[1].rev).slice(0,8);
+  const maxRevT = topT[0]?.[1].rev||1;
   document.getElementById('dash-top-treatment').innerHTML = topT.length ? topT.map(([name,v],i)=>`
     <div style="margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
@@ -1164,20 +1110,17 @@ function renderDash() {
         <span style="font-size:13px;font-weight:600;color:var(--sage-dark);flex-shrink:0;margin-left:8px">${rpS(v.rev)}</span>
       </div>
       <div style="background:var(--cream-dark);border-radius:99px;height:7px;overflow:hidden">
-        <div style="height:100%;border-radius:99px;background:${i===0?'var(--sage-dark)':i<3?'var(--sage)':'var(--sage-light)'};width:${Math.round(v.rev/maxRevT*100)}%;transition:width .5s"></div>
+        <div style="height:100%;border-radius:99px;background:${i===0?'var(--sage-dark)':i<3?'var(--sage)':'var(--sage-light)'};width:${Math.round(v.rev/maxRevT*100)}%"></div>
       </div>
       <div style="font-size:11px;color:var(--text-soft);margin-top:2px">${v.trx} transaksi · ${v.pax} pax</div>
     </div>`).join('') : '<p style="color:var(--text-soft);font-size:13px">Tidak ada data</p>';
-
-  // ── Alacarte vs Bundling split ──
-  const alRev = rows.filter(r=>r.Tipe==='Alacarte').reduce((s,r)=>s+(Number(r.Revenue)||0),0);
-  const buRev = rows.filter(r=>r.Tipe==='Bundling').reduce((s,r)=>s+(Number(r.Revenue)||0),0);
-  const alTrx = rows.filter(r=>r.Tipe==='Alacarte').length;
-  const buTrx = rows.filter(r=>r.Tipe==='Bundling').length;
-  const tot   = alRev + buRev || 1;
-  const alPct = Math.round(alRev/tot*100);
-  const buPct = 100 - alPct;
-  document.getElementById('dash-tipe-split').innerHTML = `
+  const alRev=rows.filter(r=>r.Tipe==='Alacarte').reduce((s,r)=>s+(Number(r.Revenue)||0),0);
+  const buRev=rows.filter(r=>r.Tipe==='Bundling').reduce((s,r)=>s+(Number(r.Revenue)||0),0);
+  const alTrx=rows.filter(r=>r.Tipe==='Alacarte').length;
+  const buTrx=rows.filter(r=>r.Tipe==='Bundling').length;
+  const tot=alRev+buRev||1;
+  const alPct=Math.round(alRev/tot*100), buPct=100-alPct;
+  document.getElementById('dash-tipe-split').innerHTML=`
     <div style="margin-bottom:16px">
       <div style="display:flex;height:20px;border-radius:99px;overflow:hidden;margin-bottom:10px">
         <div style="width:${alPct}%;background:var(--sage);transition:width .5s"></div>
@@ -1196,51 +1139,39 @@ function renderDash() {
         </div>
       </div>
     </div>`;
-
-  // ── Monthly revenue bar chart ──
-  const MO_ID = {January:'Jan',February:'Feb',March:'Mar',April:'Apr',May:'Mei',June:'Jun',July:'Jul',August:'Ags',September:'Sep',October:'Okt',November:'Nov',December:'Des'};
-  const byMonth = {};
-  rows.forEach(r => {
-    const k = r.Bulan || 'Unknown';
-    byMonth[k] = (byMonth[k]||0) + (Number(r.Revenue)||0);
-  });
-  const MO_ORDER = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const monthEntries = MO_ORDER.filter(m=>byMonth[m]).map(m=>[m,byMonth[m]]);
-  const maxM = Math.max(...monthEntries.map(e=>e[1]),1);
-  document.getElementById('dash-monthly-chart').innerHTML = monthEntries.length ? monthEntries.map(([m,v])=>`
+  const MO_ID={January:'Jan',February:'Feb',March:'Mar',April:'Apr',May:'Mei',June:'Jun',July:'Jul',August:'Ags',September:'Sep',October:'Okt',November:'Nov',December:'Des'};
+  const byMonth={};
+  rows.forEach(r=>{byMonth[r.Bulan]=(byMonth[r.Bulan]||0)+(Number(r.Revenue)||0);});
+  const MO_ORDER=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const mEntries=MO_ORDER.filter(m=>byMonth[m]).map(m=>[m,byMonth[m]]);
+  const maxM=Math.max(...mEntries.map(e=>e[1]),1);
+  document.getElementById('dash-monthly-chart').innerHTML=mEntries.length?mEntries.map(([m,v])=>`
     <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;min-width:0">
-      <div style="font-size:10px;color:var(--sage-dark);font-weight:600;writing-mode:initial">${rpS(v)}</div>
-      <div style="background:var(--sage);border-radius:4px 4px 0 0;width:100%;transition:height .5s;height:${Math.round(v/maxM*130)}px" title="${m}: ${rp(v)}"></div>
+      <div style="font-size:10px;color:var(--sage-dark);font-weight:600">${rpS(v)}</div>
+      <div style="background:var(--sage);border-radius:4px 4px 0 0;width:100%;height:${Math.round(v/maxM*130)}px" title="${m}: ${rp(v)}"></div>
       <div style="font-size:10px;color:var(--text-soft);text-align:center">${MO_ID[m]||m}</div>
-    </div>`).join('') : '<p style="color:var(--text-soft);font-size:13px">Tidak ada data</p>';
-
-
-
-  // ── Top by Pax ──
-  const topPax = Object.entries(byTreatment).sort((a,b)=>b[1].pax-a[1].pax).slice(0,8);
-  const maxPax = topPax[0]?.[1].pax || 1;
-  document.getElementById('dash-top-pax').innerHTML = topPax.length ? topPax.map(([name,v],i)=>`
+    </div>`).join(''):'<p style="color:var(--text-soft);font-size:13px">Tidak ada data</p>';
+  const topPax=Object.entries(byT).sort((a,b)=>b[1].pax-a[1].pax).slice(0,8);
+  const maxPax=topPax[0]?.[1].pax||1;
+  document.getElementById('dash-top-pax').innerHTML=topPax.length?topPax.map(([name,v],i)=>`
     <div style="margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
         <span style="font-size:13px;color:var(--text);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span>
         <span style="font-size:13px;font-weight:600;color:var(--brown-light);flex-shrink:0;margin-left:8px">${v.pax} pax</span>
       </div>
       <div style="background:var(--cream-dark);border-radius:99px;height:6px;overflow:hidden">
-        <div style="height:100%;border-radius:99px;background:var(--gold);width:${Math.round(v.pax/maxPax*100)}%;transition:width .5s"></div>
+        <div style="height:100%;border-radius:99px;background:var(--gold);width:${Math.round(v.pax/maxPax*100)}%"></div>
       </div>
-    </div>`).join('') : '<p style="color:var(--text-soft);font-size:13px">Tidak ada data</p>';
-
-  // ── Detail table ──
-  const sorted = [...rows].sort((a,b)=>(Number(b.Revenue)||0)-(Number(a.Revenue)||0)).slice(0,50);
-  document.getElementById('dash-table').innerHTML = sorted.length ? sorted.map(r=>`<tr>
-    <td>${r.Tanggal||'—'}</td>
-    <td>${r.Bulan||'—'}</td>
+    </div>`).join(''):'<p style="color:var(--text-soft);font-size:13px">Tidak ada data</p>';
+  const sorted=[...rows].sort((a,b)=>(Number(b.Revenue)||0)-(Number(a.Revenue)||0)).slice(0,50);
+  document.getElementById('dash-table').innerHTML=sorted.length?sorted.map(r=>`<tr>
+    <td>${r.Tanggal||'—'}</td><td>${r.Bulan||'—'}</td>
     <td><span style="background:${r.Tipe==='Alacarte'?'rgba(122,158,126,.15)':'rgba(201,168,76,.15)'};color:${r.Tipe==='Alacarte'?'var(--sage-dark)':'var(--brown)'};padding:2px 9px;border-radius:20px;font-size:12px;font-weight:600">${r.Tipe||'—'}</span></td>
     <td>${r['Agent/Treatment']||'—'}</td>
     <td style="text-align:right">${r.Pax||'—'}</td>
     <td style="text-align:right">${rp(r['Harga/Pax'])}</td>
     <td style="text-align:right;font-weight:600;color:var(--sage-dark)">${rp(r.Revenue)}</td>
-  </tr>`).join('') : '<tr><td colspan="7"><div class="empty"><div class="ico">📭</div><p>Tidak ada data</p></div></td></tr>';
+  </tr>`).join(''):'<tr><td colspan="7"><div class="empty"><div class="ico">📭</div><p>Tidak ada data</p></div></td></tr>';
 }
 
 // ── AUTO LOAD ─────────────────────────────────────
