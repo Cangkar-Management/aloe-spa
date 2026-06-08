@@ -243,8 +243,10 @@ tbody tr:hover td{background:rgba(122,158,126,.05)}
     <div class="ctitle" id="form-title">📋 Form OTB
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
         <!-- OTB: pilih bulan & tahun -->
-        <div id="otb-period" style="display:flex;gap:8px;align-items:center">
-          <select id="f-bulan" style="padding:7px 12px;border:1.5px solid var(--cream-dark);border-radius:8px;font-family:inherit;font-size:13px;background:var(--cream);color:var(--text);outline:none">
+        <div id="otb-period" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input type="date" id="f-otb-tgl" style="padding:7px 12px;border:1.5px solid var(--cream-dark);border-radius:8px;font-family:inherit;font-size:13px;background:var(--cream);color:var(--text);outline:none" onchange="syncOtbDate()">
+          <span style="font-size:12px;color:var(--text-soft)">atau pilih bulan:</span>
+          <select id="f-bulan" onchange="syncOtbBulan()" style="padding:7px 12px;border:1.5px solid var(--cream-dark);border-radius:8px;font-family:inherit;font-size:13px;background:var(--cream);color:var(--text);outline:none">
             <option value="January">Januari</option><option value="February">Februari</option>
             <option value="March">Maret</option><option value="April">April</option>
             <option value="May">Mei</option><option value="June" selected>Juni</option>
@@ -252,7 +254,7 @@ tbody tr:hover td{background:rgba(122,158,126,.05)}
             <option value="September">September</option><option value="October">Oktober</option>
             <option value="November">November</option><option value="December">Desember</option>
           </select>
-          <select id="f-tahun" style="padding:7px 12px;border:1.5px solid var(--cream-dark);border-radius:8px;font-family:inherit;font-size:13px;background:var(--cream);color:var(--text);outline:none">
+          <select id="f-tahun" onchange="syncOtbBulan()" style="padding:7px 12px;border:1.5px solid var(--cream-dark);border-radius:8px;font-family:inherit;font-size:13px;background:var(--cream);color:var(--text);outline:none">
             <option value="2025">2025</option><option value="2026" selected>2026</option><option value="2027">2027</option>
           </select>
           <span style="font-size:12px;color:var(--text-soft)">Periode OTB</span>
@@ -535,8 +537,11 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('f-tgl').value=t;
   // init multi-row
   setMode('otb');
-  // set default date for actual
-  document.getElementById('f-tgl').value = new Date().toISOString().split('T')[0];
+  // set default dates
+  const todayStr = new Date().toISOString().split('T')[0];
+  document.getElementById('f-tgl').value = todayStr;
+  document.getElementById('f-otb-tgl').value = todayStr;
+  syncOtbDate();
 });
 
 // ── UTILS ─────────────────────────────────────────
@@ -725,6 +730,27 @@ function prev(){}
 // ── MODE SWITCHER ─────────────────────────────────
 let currentMode = 'otb';
 
+// Sync OTB date picker ↔ bulan/tahun selects
+const MO_EN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function syncOtbDate() {
+  const tgl = document.getElementById('f-otb-tgl').value;
+  if(!tgl) return;
+  const d = new Date(tgl);
+  document.getElementById('f-bulan').value = MO_EN[d.getMonth()];
+  document.getElementById('f-tahun').value = d.getFullYear();
+}
+
+function syncOtbBulan() {
+  const bulan = document.getElementById('f-bulan').value;
+  const tahun = document.getElementById('f-tahun').value;
+  const mo = MO_EN.indexOf(bulan);
+  if(mo < 0) return;
+  // Set date to 1st of that month
+  const mm = String(mo+1).padStart(2,'0');
+  document.getElementById('f-otb-tgl').value = `${tahun}-${mm}-01`;
+}
+
 function setMode(mode) {
   currentMode = mode;
   const isOtb = mode === 'otb';
@@ -769,7 +795,9 @@ async function submitAll() {
   if(isOtb) {
     bulan   = document.getElementById('f-bulan').value;
     tahun   = parseInt(document.getElementById('f-tahun').value);
-    tanggal = 1; // OTB: tanggal 1 sebagai penanda periode
+    // Use date picker if set, otherwise default to 1st of month
+    const otbTgl = document.getElementById('f-otb-tgl')?.value;
+    tanggal = otbTgl ? new Date(otbTgl).getDate() : 1;
   } else {
     const tgl = document.getElementById('f-tgl').value;
     if(!tgl){ toast('⚠️ Pilih tanggal dulu','err'); return; }
@@ -891,7 +919,60 @@ async function del_legacy(row){
 
 // ── FORECAST ─────────────────────────────────────
 async function loadFC(){
-  const res=await api({action:'getForecast'});
+  // Load OTB and Actual from their respective sheets, then compute forecast client-side
+  const [resOtb, resAct, resFc] = await Promise.all([
+    api({action:'getSheet', payload:'Database_OTB'}),
+    api({action:'getSheet', payload:'Database_Actual'}),
+    api({action:'getForecast'})
+  ]);
+  if(!resFc?.data) return;
+
+  // Build lookup: month → OTB total, Actual total
+  const otbByMonth  = {};
+  const actByMonth  = {};
+  const actDaysByMonth = {};
+
+  (resOtb?.data||[]).forEach(r => {
+    const k = r.Bulan;
+    otbByMonth[k] = (otbByMonth[k]||0) + (Number(r.Revenue)||0);
+  });
+  (resAct?.data||[]).forEach(r => {
+    const k = r.Bulan;
+    actByMonth[k]     = (actByMonth[k]||0) + (Number(r.Revenue)||0);
+    // count unique days
+    if(!actDaysByMonth[k]) actDaysByMonth[k] = new Set();
+    actDaysByMonth[k].add(r.Tanggal);
+  });
+
+  // Patch each row's OTB and MTD Actual with live DB data
+  resFc.data = resFc.data.map(r => {
+    const mn = r.Bulan;
+    if(mn && mn !== 'TOTAL') {
+      if(otbByMonth[mn] !== undefined) r.OTB = otbByMonth[mn];
+      if(actByMonth[mn] !== undefined) {
+        r['MTD Actual'] = actByMonth[mn];
+        r['Hari Berjalan'] = actDaysByMonth[mn]?.size || 0;
+        const days = r['Hari Berjalan'] || 1;
+        r['Daily Pace'] = Math.round(actByMonth[mn] / days);
+        r['Forecast']   = actByMonth[mn] + r['Daily Pace'] * ((r.Days||30) - days);
+        r['Gap vs Budget'] = r['Forecast'] - (r.Budget||0);
+        r['Ach %'] = r.Budget ? Math.round(r['Forecast']/r.Budget*100*10)/10 : 0;
+      }
+    }
+    return r;
+  });
+
+  // Recompute TOTAL row
+  const rows = resFc.data.filter(r=>r.Bulan && r.Bulan!=='TOTAL' && !String(r.Bulan).includes('TOTAL'));
+  const totalRow = resFc.data.find(r=>String(r.Bulan).includes('TOTAL')) || {};
+  totalRow['MTD Actual'] = rows.reduce((s,r)=>s+(Number(r['MTD Actual'])||0),0);
+  totalRow['OTB']        = rows.reduce((s,r)=>s+(Number(r.OTB)||0),0);
+  totalRow['Forecast']   = rows.reduce((s,r)=>s+(Number(r.Forecast)||0),0);
+  totalRow['Gap vs Budget'] = rows.reduce((s,r)=>s+(Number(r['Gap vs Budget'])||0),0);
+  totalRow['Budget']     = rows.reduce((s,r)=>s+(Number(r.Budget)||0),0);
+  totalRow['Ach %']      = totalRow.Budget ? Math.round(totalRow.Forecast/totalRow.Budget*100*10)/10 : 0;
+
+  const res = resFc;
   if(!res?.data) return;
   const total=res.data.find(r=>String(r.Bulan).includes('TOTAL'))||{};
   const rows=res.data.filter(r=>r.Bulan&&!String(r.Bulan).includes('TOTAL'));
@@ -922,9 +1003,49 @@ async function loadFC(){
 
 // ── HISTORIS ──────────────────────────────────────
 async function loadHist(){
-  const res=await api({action:'getHistoris'});
+  const [res, resAct] = await Promise.all([
+    api({action:'getHistoris'}),
+    api({action:'getSheet', payload:'Database_Actual'})
+  ]);
   if(!res) return;
   const {revData,tamuData}=res;
+
+  // Aggregate actual 2026 from Database_Actual: Alacarte→Treatment, Bundling→Package
+  const act2026 = {};
+  (resAct?.data||[]).forEach(r => {
+    const mn = r.Bulan;
+    if(!act2026[mn]) act2026[mn] = {treat:0, pkg:0};
+    if(r.Tipe === 'Alacarte') act2026[mn].treat += Number(r.Revenue)||0;
+    if(r.Tipe === 'Bundling')  act2026[mn].pkg   += Number(r.Revenue)||0;
+  });
+
+  // Patch revData with live 2026 data
+  const MO_ID_MAP = {January:'Januari',February:'Februari',March:'Maret',April:'April',May:'Mei',June:'Juni',July:'Juli',August:'Agustus',September:'September',October:'Oktober',November:'November',December:'Desember'};
+  revData.forEach(r => {
+    // Match Indonesian month name to English key
+    const enKey = Object.entries(MO_ID_MAP).find(([en,id])=>id===r.Bulan)?.[0];
+    if(enKey && act2026[enKey]) {
+      const live = act2026[enKey];
+      if(live.treat > 0 || live.pkg > 0) {
+        r['Treatment 2026'] = live.treat;
+        r['Package 2026']   = live.pkg;
+        r['Total 2026']     = live.treat + live.pkg;
+        const tot25 = Number(r['Total 2025'])||0;
+        r['YoY (%)'] = tot25 > 0 ? Math.round((r['Total 2026']-tot25)/tot25*100*10)/10 : -100;
+      }
+    }
+  });
+
+  // Recompute TOTAL row
+  const rows = revData.filter(r=>r.Bulan && r.Bulan!=='TOTAL');
+  const totRow = revData.find(r=>r.Bulan==='TOTAL');
+  if(totRow) {
+    totRow['Treatment 2026'] = rows.reduce((s,r)=>s+(Number(r['Treatment 2026'])||0),0);
+    totRow['Package 2026']   = rows.reduce((s,r)=>s+(Number(r['Package 2026'])||0),0);
+    totRow['Total 2026']     = rows.reduce((s,r)=>s+(Number(r['Total 2026'])||0),0);
+    const tot25 = Number(totRow['Total 2025'])||0;
+    totRow['YoY (%)'] = tot25 > 0 ? Math.round((totRow['Total 2026']-tot25)/tot25*100*10)/10 : -100;
+  }
   const tot=revData.find(r=>r.Bulan==='TOTAL')||{};
   const rows=revData.filter(r=>r.Bulan&&r.Bulan!=='TOTAL');
   document.getElementById('h-25').textContent=rpS(tot['Total 2025']);
