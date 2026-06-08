@@ -212,6 +212,55 @@ tbody tr:hover td{background:rgba(122,158,126,.05)}
       • Jika error <b>CORS</b>: hapus deployment lama, buat <b>New deployment</b> baru (bukan edit yang lama)
     </p>
   </div>
+
+  <!-- BUDGET INPUT SECTION -->
+  <div class="card" style="margin-top:8px">
+    <div class="ctitle">
+      🎯 Input Budget Tahunan
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="bud-year-sel" onchange="renderBudgetSetup()" style="padding:7px 12px;border:1.5px solid var(--cream-dark);border-radius:8px;font-family:inherit;font-size:13px;background:var(--cream);color:var(--text);outline:none">
+          <option value="2025">2025</option>
+          <option value="2026">2026</option>
+          <option value="2027" selected>2027</option>
+          <option value="2028">2028</option>
+          <option value="2029">2029</option>
+        </select>
+        <span style="font-size:12px;color:var(--text-soft)">Tahun anggaran</span>
+      </div>
+    </div>
+    <p style="font-size:13px;color:var(--text-soft);margin-bottom:18px;line-height:1.7">
+      Input target budget revenue per bulan. Data ini akan digunakan sebagai acuan di halaman <b>Forecast</b> dan <b>Budget</b>. 
+      Header kolom otomatis menyesuaikan tahun yang dipilih.
+    </p>
+
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:13.5px" id="budSetupTable">
+        <thead>
+          <tr style="background:var(--cream-dark)">
+            <th style="padding:11px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-soft)">Bulan</th>
+            <th style="padding:11px 14px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-soft)" id="bud-th-forecast">Forecast <span id="bud-th-prev-year">2026</span></th>
+            <th style="padding:11px 14px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--sage-dark)" id="bud-th-budget">Target Budget <span id="bud-th-year">2027</span> (Rp)</th>
+            <th style="padding:11px 14px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-soft)">Growth %</th>
+          </tr>
+        </thead>
+        <tbody id="budSetupBody"></tbody>
+        <tfoot>
+          <tr style="background:var(--cream-dark)">
+            <td style="padding:11px 14px;font-weight:700;color:var(--brown)">TOTAL</td>
+            <td style="padding:11px 14px;text-align:right;font-weight:700;color:var(--text-soft)" id="bud-total-prev">—</td>
+            <td style="padding:11px 14px;text-align:right;font-weight:700;color:var(--sage-dark)" id="bud-total-cur">—</td>
+            <td style="padding:11px 14px;text-align:right;font-weight:700" id="bud-total-growth">—</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <div style="margin-top:18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <button class="btn" onclick="saveBudgetSetup()">💾 Simpan Budget ke Google Sheets</button>
+      <button class="btn" style="background:none;border:1.5px solid var(--sage);color:var(--sage-dark)" onclick="loadBudgetSetup()">🔄 Load dari Sheets</button>
+      <div id="bud-save-status" style="font-size:13px;color:var(--text-soft)"></div>
+    </div>
+  </div>
 </div>
 
 <!-- ══ INPUT ══ -->
@@ -375,7 +424,7 @@ tbody tr:hover td{background:rgba(122,158,126,.05)}
   <div class="card">
     <div class="ctitle">📊 Proyeksi 2027 vs 2025</div>
     <div class="bchart" id="bChart"></div>
-    <div class="legend"><div class="li"><div class="ld" style="background:var(--cream-dark);border:1.5px solid var(--brown-light)"></div>2025</div><div class="li"><div class="ld" style="background:var(--gold)"></div>2027</div></div>
+    <div class="legend"><div class="li"><div class="ld" style="background:var(--sage-light)"></div>Forecast 2026</div><div class="li"><div class="ld" style="background:var(--gold)"></div>Budget 2027</div></div>
   </div>
   <div class="card">
     <div class="ctitle">📋 Proyeksi per Bulan <button class="btn btn-sm" onclick="loadBud()">🔄 Refresh</button></div>
@@ -634,6 +683,7 @@ function go(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   document.getElementById('t-'+name).classList.add('active');
+  if(name==='setup' && URL) loadBudgetSetup();
   if(name==='fc'   && URL) loadFC();
   if(name==='hist' && URL) loadHist();
   if(name==='bud'  && URL) loadBud();
@@ -896,10 +946,11 @@ async function loadDB(){
 
 // ── FORECAST ─────────────────────────────────────
 async function loadFC(){
-  const [resOtb, resAct, resFc] = await Promise.all([
+  const [resOtb, resAct, resFc, resBudget] = await Promise.all([
     api({action:'getSheet', payload:'Database_OTB'}),
     api({action:'getSheet', payload:'Database_Actual'}),
-    api({action:'getForecast'})
+    api({action:'getForecast'}),
+    api({action:'getSheet', payload:'Budget_Setup'})
   ]);
   if(!resFc?.data) return;
   const otbByMonth={}, actByMonth={}, actDaysByMonth={};
@@ -911,10 +962,19 @@ async function loadFC(){
     if(!actDaysByMonth[r.Bulan]) actDaysByMonth[r.Bulan]=new Set();
     actDaysByMonth[r.Bulan].add(r.Tanggal);
   });
+
+  // Budget lookup from Budget_Setup sheet
+  const fcYear = new Date().getFullYear();
+  const budByMonth = {};
+  (resBudget?.data||[]).filter(r=>Number(r.Tahun)===fcYear).forEach(r=>{
+    budByMonth[r.Bulan] = Number(r.Budget)||0;
+  });
+
   resFc.data=resFc.data.map(r=>{
     const mn=r.Bulan;
     if(mn&&mn!=='TOTAL'){
       if(otbByMonth[mn]!==undefined) r.OTB=otbByMonth[mn];
+      if(budByMonth[mn]!==undefined && budByMonth[mn]>0) r.Budget=budByMonth[mn];
       if(actByMonth[mn]!==undefined){
         r['MTD Actual']=actByMonth[mn];
         r['Hari Berjalan']=actDaysByMonth[mn]?.size||0;
@@ -1041,13 +1101,35 @@ async function loadBud(){
   }).join('');
   const budrows=projData.filter(r=>r.Bulan&&r.Bulan!=='TOTAL 2027');
   const tot=projData.find(r=>r.Bulan==='TOTAL 2027')||{};
-  const hist25={};
+  // Base from Forecast 2026 (actual + projected) not 2025
+  const hist25={}; // kept for chart comparison
   if(hRes?.revData) hRes.revData.filter(r=>r.Bulan&&r.Bulan!=='TOTAL').forEach(r=>hist25[r.Bulan]=Number(r['Total 2025'])||0);
-  const mx=Math.max(...budrows.flatMap(r=>[Number(r['Total Revenue (Rp)'])||0,hist25[r.Bulan]||0]));
+
+  // Build forecast 2026 as base for budget 2027
+  const [resOtbBud, resActBud] = await Promise.all([
+    api({action:'getSheet', payload:'Database_OTB'}),
+    api({action:'getSheet', payload:'Database_Actual'})
+  ]);
+  const fc2026Base = {};
+  const actBudByMonth = {};
+  (resActBud?.data||[]).filter(r=>Number(r.Tahun)===2026).forEach(r=>{
+    actBudByMonth[r.Bulan]=(actBudByMonth[r.Bulan]||0)+(Number(r.Revenue)||0);
+  });
+  // Use actual where available, forecast pace for rest
+  const daysInMonth = {January:31,February:28,March:31,April:30,May:31,June:30,July:31,August:31,September:30,October:31,November:30,December:31};
+  MONTHS_EN.forEach(m => {
+    if(actBudByMonth[m]) {
+      // extrapolate to full month
+      const uniqueDays = new Set((resActBud?.data||[]).filter(r=>r.Bulan===m&&Number(r.Tahun)===2026).map(r=>r.Tanggal)).size || 1;
+      const pace = actBudByMonth[m] / uniqueDays;
+      fc2026Base[m] = Math.round(pace * (daysInMonth[m]||30));
+    }
+  });
+  const mx=Math.max(...budrows.flatMap(r=>[Number(r['Total Revenue (Rp)'])||0,fc2026Base[r.Bulan]||hist25[r.Bulan]||0]));
   document.getElementById('bChart').innerHTML=budrows.map(r=>{
-    const v25=hist25[r.Bulan]||0,v27=Number(r['Total Revenue (Rp)'])||0;
-    const h25=mx?Math.round(v25/mx*180):0,h27=mx?Math.round(v27/mx*180):0;
-    return`<div class="bg"><div class="bars"><div class="bar b25" style="height:${h25}px"></div><div class="bar b27" style="height:${h27}px"></div></div><div class="bl">${(r.Bulan||'').substring(0,3)}</div></div>`;
+    const v26=fc2026Base[r.Bulan]||hist25[r.Bulan]||0,v27=Number(r['Total Revenue (Rp)'])||0;
+    const h26=mx?Math.round(v26/mx*180):0,h27=mx?Math.round(v27/mx*180):0;
+    return`<div class="bg"><div class="bars"><div class="bar b26" style="height:${h26}px" title="${r.Bulan} Forecast 2026: ${rp(v26)}"></div><div class="bar b27" style="height:${h27}px" title="${r.Bulan} Budget 2027: ${rp(v27)}"></div></div><div class="bl">${(r.Bulan||'').substring(0,3)}</div></div>`;
   }).join('');
   document.getElementById('budBody').innerHTML=[...budrows,{...tot,Bulan:'TOTAL 2027'}].map(r=>{
     const isTot=r.Bulan==='TOTAL 2027'; const vs=r['vs 2025 (%)'];
@@ -1171,9 +1253,160 @@ function renderDash() {
   </tr>`).join(''):'<tr><td colspan="7"><div class="empty"><div class="ico">📭</div><p>Tidak ada data</p></div></td></tr>';
 }
 
+// ── BUDGET SETUP ──────────────────────────────────
+const MONTHS_ID = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+const MONTHS_EN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+// In-memory budget store: { year: { month_en: amount } }
+let budgetStore = {};
+// Forecast store for prev year reference: { month_en: forecast }
+let forecastStore = {};
+
+async function loadBudgetSetup() {
+  const yr = parseInt(document.getElementById('bud-year-sel').value);
+  const prevYr = yr - 1;
+  document.getElementById('bud-save-status').textContent = 'Memuat data…';
+
+  // Load budget from Sheets
+  const [resBud, resFcPrev, resActPrev] = await Promise.all([
+    api({action:'getSheet', payload:'Budget_Setup'}),
+    api({action:'getForecast'}),
+    api({action:'getSheet', payload:'Database_Actual'})
+  ]);
+
+  // Store budget data
+  budgetStore[yr] = {};
+  (resBud?.data||[]).filter(r=>Number(r.Tahun)===yr).forEach(r=>{
+    budgetStore[yr][r.Bulan] = Number(r.Budget)||0;
+  });
+
+  // Build forecast for prev year (actual + pace for remaining months)
+  forecastStore = {};
+  const actByMonth = {};
+  (resActPrev?.data||[]).filter(r=>Number(r.Tahun)===prevYr).forEach(r=>{
+    actByMonth[r.Bulan] = (actByMonth[r.Bulan]||0) + (Number(r.Revenue)||0);
+  });
+  // Use Forecast sheet data for months with no actual yet
+  (resFcPrev?.data||[]).forEach(r=>{
+    if(r.Bulan && !String(r.Bulan).includes('TOTAL')) {
+      const enKey = MONTHS_EN.find(m => r.Bulan === m ||
+        MONTHS_ID[MONTHS_EN.indexOf(m)] === r.Bulan);
+      if(enKey) {
+        forecastStore[enKey] = actByMonth[enKey] || Number(r.Forecast) || Number(r['MTD Actual']) || 0;
+      }
+    }
+  });
+  // Fill from actual if not in forecast sheet
+  MONTHS_EN.forEach(m => {
+    if(!forecastStore[m] && actByMonth[m]) forecastStore[m] = actByMonth[m];
+  });
+
+  document.getElementById('bud-save-status').textContent = '';
+  renderBudgetSetup();
+}
+
+function renderBudgetSetup() {
+  const yr = parseInt(document.getElementById('bud-year-sel').value);
+  const prevYr = yr - 1;
+
+  // Update headers
+  document.getElementById('bud-th-prev-year').textContent = prevYr;
+  document.getElementById('bud-th-year').textContent = yr;
+
+  if(!budgetStore[yr]) budgetStore[yr] = {};
+
+  let totalPrev = 0, totalCur = 0;
+
+  const tbody = document.getElementById('budSetupBody');
+  tbody.innerHTML = MONTHS_EN.map((enM, i) => {
+    const idM = MONTHS_ID[i];
+    const prevVal = forecastStore[enM] || 0;
+    const curVal  = budgetStore[yr][enM] || 0;
+    const growth  = prevVal > 0 ? ((curVal - prevVal) / prevVal * 100) : 0;
+    totalPrev += prevVal;
+    totalCur  += curVal;
+    const growthColor = growth >= 0 ? 'var(--green)' : 'var(--red)';
+
+    return `<tr style="border-bottom:1px solid var(--cream-dark)">
+      <td style="padding:9px 14px;font-weight:600;color:var(--brown)">${idM}</td>
+      <td style="padding:9px 14px;text-align:right;color:var(--text-soft)">${prevVal ? rp(prevVal) : '—'}</td>
+      <td style="padding:9px 6px">
+        <input type="number" id="bi-${enM}" value="${curVal||''}" placeholder="0"
+          oninput="onBudgetInput('${enM}')"
+          style="width:100%;padding:8px 12px;border:1.5px solid var(--cream-dark);border-radius:8px;font-family:inherit;font-size:13px;background:var(--cream);color:var(--text);outline:none;text-align:right">
+      </td>
+      <td style="padding:9px 14px;text-align:right;font-weight:600;color:${growthColor}" id="bg-${enM}">
+        ${prevVal > 0 ? (growth>=0?'+':'')+growth.toFixed(1)+'%' : '—'}
+      </td>
+    </tr>`;
+  }).join('');
+
+  updateBudgetTotals(totalPrev, totalCur);
+}
+
+function onBudgetInput(enM) {
+  const yr = parseInt(document.getElementById('bud-year-sel').value);
+  const val = parseInt(document.getElementById('bi-'+enM).value)||0;
+  if(!budgetStore[yr]) budgetStore[yr] = {};
+  budgetStore[yr][enM] = val;
+
+  // Update growth for this row
+  const prevVal = forecastStore[enM]||0;
+  const growth = prevVal>0 ? (val-prevVal)/prevVal*100 : 0;
+  const el = document.getElementById('bg-'+enM);
+  if(el) {
+    el.textContent = prevVal>0 ? (growth>=0?'+':'')+growth.toFixed(1)+'%' : '—';
+    el.style.color = growth>=0?'var(--green)':'var(--red)';
+  }
+
+  // Recompute totals
+  const yr2 = parseInt(document.getElementById('bud-year-sel').value);
+  let tp=0, tc=0;
+  MONTHS_EN.forEach(m=>{
+    tp += forecastStore[m]||0;
+    tc += budgetStore[yr2][m]||0;
+  });
+  updateBudgetTotals(tp, tc);
+}
+
+function updateBudgetTotals(totalPrev, totalCur) {
+  document.getElementById('bud-total-prev').textContent = totalPrev ? rp(totalPrev) : '—';
+  document.getElementById('bud-total-cur').textContent  = totalCur  ? rp(totalCur)  : '—';
+  const g = totalPrev>0 ? (totalCur-totalPrev)/totalPrev*100 : 0;
+  const ge = document.getElementById('bud-total-growth');
+  ge.textContent = totalPrev>0 ? (g>=0?'+':'')+g.toFixed(1)+'%' : '—';
+  ge.style.color = g>=0?'var(--green)':'var(--red)';
+}
+
+async function saveBudgetSetup() {
+  const yr = parseInt(document.getElementById('bud-year-sel').value);
+  const entries = MONTHS_EN.map((enM,i)=>({
+    tahun: yr,
+    bulan: enM,
+    bulanId: MONTHS_ID[i],
+    budget: budgetStore[yr]?.[enM]||0
+  })).filter(e=>e.budget>0);
+
+  if(!entries.length){ toast('⚠️ Isi minimal 1 bulan dulu','err'); return; }
+
+  const statusEl = document.getElementById('bud-save-status');
+  statusEl.textContent = '⏳ Menyimpan…';
+
+  const res = await api(null, {action:'saveBudget', payload:{year:yr, entries}});
+  if(res?.status==='ok'){
+    toast('✅ Budget '+yr+' berhasil disimpan!');
+    statusEl.textContent = '✓ Tersimpan '+new Date().toLocaleTimeString('id-ID');
+  } else {
+    toast('Gagal simpan: '+(res?.error||'error'),'err');
+    statusEl.textContent = '';
+  }
+}
+
+
 // ── AUTO LOAD ─────────────────────────────────────
 // URL always set — auto load all
 loadRecent();
+loadBudgetSetup();
 setTimeout(()=>{ loadFC(); loadHist(); loadBud(); loadDash(); }, 600);
 </script>
 </body>
